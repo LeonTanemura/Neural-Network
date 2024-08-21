@@ -11,6 +11,7 @@ from model import get_model, get_criterion, get_optimizer
 
 from .utils import cal_metrics, load_json, set_seed
 import torch
+from collections import Counter
 
 logger = logging.getLogger(__name__)
 
@@ -34,23 +35,25 @@ class ExpBase:
 
         self.seed = config.seed
         self.init_writer()
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     def init_writer(self):
         metrics = [
-            "fold",
+            "epoch",
             "ACC",
             "AUC",
         ]
         self.writer = {m: [] for m in metrics}
 
-    def add_results(self, i_fold, scores: dict, time):
-        self.writer["fold"].append(i_fold)
+    def add_results(self, epoch, scores: dict, time):
+        self.writer["epoch"].append(epoch)
         for m in self.writer.keys():
-            if m == "fold":
+            if m == "epoch":
                 continue
             self.writer[m].append(scores[m])
 
     def run(self):
+        score_all = []
         model = get_model(self.model_name)
         criterion = get_criterion(self.criterion_name)
         optimizer = get_optimizer(self.optimizer_name, model)
@@ -59,6 +62,7 @@ class ExpBase:
         all_acc = 0.0
         early_stop_count = 0
         for epoch in range(self.epochs):
+            start = time()
             for batch_idx, (data, target) in enumerate(self.train_loader):
                 optimizer.zero_grad()
                 output = model(data)
@@ -66,36 +70,34 @@ class ExpBase:
                 loss.backward()
                 optimizer.step()
 
-            # Test the network
-            correct = 0
-            total = 0
-            with torch.no_grad():
-                for data, target in self.test_loader:
-                    output = model(data)
-                    prediction = output.argmax(dim=1, keepdim=True)
-                    correct += prediction.eq(target.view_as(prediction)).sum().item()
-                    total += target.size(0)
+            score = cal_metrics(model, self.test_loader, self.device)
+            score_all.append(score)
+            acc = score["ACC"]
 
-            acc = 100. * correct / total
-            all_acc += acc
             if acc > best_acc:
                 best_acc = acc
                 early_stop_count = 0
             else:
                 early_stop_count += 1
-            logger.info('Epoch: {} Accuracy: {}/{} ({:.2f}%)'.format(epoch, correct, total, acc))
+            logger.info(
+                f"[{self.model_name} results ({epoch+1} / {self.epochs})] ACC: {score['ACC']:.4f} | AUC: {score['AUC']:.4f}"
+            )
 
             if early_stop_count >= 10:
                 print('Early stopping')
                 break
 
-        logger.info('Best Accuracy: {:.2f}%'.format(best_acc))
-        logger.info('Mean Accuracy: {:.2f}%'.format(all_acc / self.epochs))
+            end = time() - start
+            self.add_results(epoch, score, end)
 
-        # logger.info(
-        #         f"[{self.model_name} results] MSE: {(final_score['MSE']/self.n_splits)} | MAE: {(final_score['MAE']/self.n_splits)} | "
-        #         f"RMSE: {(final_score['RMSE']/self.n_splits)} | QWK: {(final_score['QWK']/self.n_splits)}"
-        #     )
+        final_score = Counter()
+        for item in score_all:
+            final_score.update(item)
+
+        logger.info('Best Accuracy: {:.4f}'.format(best_acc))
+        logger.info(
+                f"[Mean results] ACC: {(final_score['ACC']/self.epochs):.4f} | AUC: {(final_score['AUC']/self.epochs):.4f}"
+            )
 
 
 class ExpSimple(ExpBase):

@@ -11,6 +11,8 @@ from typing import Dict, Union
 import numpy as np
 from sklearn.metrics import accuracy_score, roc_auc_score, mean_squared_error, mean_absolute_error, cohen_kappa_score
 import pandas as pd
+import torch
+import torch.nn.functional as F
 
 
 def set_seed(seed: int = 42):
@@ -40,22 +42,46 @@ def load_object(input_path: str):
         return pickle.load(f)
 
 
-def cal_auc_score(model, data, feature_cols, label_col):
-    pred_proba = model.predict_proba(data[feature_cols])
-    if data[label_col].nunique() == 2:
-        auc = roc_auc_score(data[label_col].values.tolist(), pred_proba[:, 1])
+def cal_auc_score(model, data_loader, device):
+    model.eval()
+    all_targets = []
+    all_probs = []
+
+    with torch.no_grad():
+        for data, target in data_loader:
+            data, target = data.to(device), target.to(device)
+            output = model(data)
+            probs = F.softmax(output, dim=1)  # クラス確率を計算
+            all_probs.extend(probs.cpu().numpy())
+            all_targets.extend(target.cpu().numpy())
+
+    all_probs = torch.tensor(all_probs)
+    all_targets = torch.tensor(all_targets)
+
+    if len(torch.unique(all_targets)) == 2:
+        auc = roc_auc_score(all_targets, all_probs[:, 1])
     else:
-        auc = roc_auc_score(data[label_col].values.tolist(), pred_proba, multi_class="ovo")
+        auc = roc_auc_score(all_targets, all_probs, multi_class="ovo")
+    
     return auc
 
+def cal_acc_score(model, data_loader, device):
+    model.eval()
+    all_preds = []
+    all_targets = []
 
-def cal_acc_score(model, data, feature_cols, label_col):
-    pred = model.predict(data[feature_cols])
-    acc = accuracy_score(data[label_col], pred)
+    with torch.no_grad():
+        for data, target in data_loader:
+            data, target = data.to(device), target.to(device)
+            output = model(data)
+            preds = output.argmax(dim=1)
+            all_preds.extend(preds.cpu().numpy())
+            all_targets.extend(target.cpu().numpy())
+
+    acc = accuracy_score(all_targets, all_preds)
     return acc
 
-
-def cal_metrics(model, data, feature_cols, label_col):
-    acc = cal_acc_score(model, data, feature_cols, label_col)
-    auc = cal_auc_score(model, data, feature_cols, label_col)
+def cal_metrics(model, data_loader, device):
+    acc = cal_acc_score(model, data_loader, device)
+    auc = cal_auc_score(model, data_loader, device)
     return {"ACC": acc, "AUC": auc}

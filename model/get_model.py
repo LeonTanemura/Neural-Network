@@ -20,6 +20,14 @@ def get_criterion(name):
 def get_optimizer(name, model):
     if name == "SGD":
         return optim.SGD(model.parameters(), lr=0.01, momentum=0.5)
+    elif name == "Adam":
+        return optim.Adam(model.parameters(), lr=0.001)
+    elif name == "AdamW":
+        return optim.AdamW(model.parameters(), lr=0.001, weight_decay=0.01)
+    elif name == "RMSprop":
+        return optim.RMSprop(model.parameters(), lr=0.01, alpha=0.99)
+    elif name == "Adadelta":
+        return optim.Adadelta(model.parameters(), lr=1.0)
     else:
         raise KeyError(f"{name} is not defined.")
 
