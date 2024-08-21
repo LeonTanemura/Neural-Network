@@ -1,4 +1,6 @@
-defaults:
-  - params: net
+# defaults:
+#   - params: net
 
-name: net
+model_name: net
+criterion_name: CrossEntropy
+optimizer_name : SGD
