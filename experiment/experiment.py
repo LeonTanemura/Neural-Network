@@ -9,7 +9,7 @@ import dataset.dataset as dataset
 from dataset import TabularDataFrame
 from model import get_model, get_criterion, get_optimizer
 
-from .utils import cal_metrics, load_json, set_seed
+from .utils import cal_metrics, load_json, set_seed, plot_confusion_matrix, concatenate_images
 import torch
 from collections import Counter
 
@@ -61,6 +61,7 @@ class ExpBase:
         best_acc = 0.0
         all_acc = 0.0
         early_stop_count = 0
+        image_list = []
         for epoch in range(self.epochs):
             start = time()
             for batch_idx, (data, target) in enumerate(self.train_loader):
@@ -89,6 +90,13 @@ class ExpBase:
 
             end = time() - start
             self.add_results(epoch, score, end)
+
+            img = plot_confusion_matrix(model, self.test_loader, self.device, epoch)
+            image_list.append(img)
+
+        concatenated_img = concatenate_images(image_list)
+        if concatenated_img:
+            concatenated_img.save('concatenated_confusion_matrices.png')
 
         final_score = Counter()
         for item in score_all:
