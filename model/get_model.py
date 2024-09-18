@@ -1,13 +1,15 @@
 from experiment.utils import set_seed
 
-from .model import Net
+from .model import Net, CNN
 import torch
 import torch.nn as nn
 import torch.optim as optim
 
 def get_model(name):
-    if name == "net":
+    if name == "Net":
         return Net()
+    elif name == "CNN":
+        return CNN()
     else:
         raise KeyError(f"{name} is not defined.")
 
